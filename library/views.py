@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from .serializers import AuthorSerializer, BookSerializer, BorrowRecordSerializer
@@ -76,23 +77,28 @@ def getBookDetail(request, id):
         return Response({'detail': 'Book deleted'})
 
 
-@api_view(['POST'])
+@api_view(['GET','POST'])
 def borrowRecord(request):
-    book_id = request.data.get('book')
-    try:
-        book = Book.objects.get(pk=book_id)
-    except Book.DoesNotExist:
-        return Response({'detail': 'Book not found'})
-    
-    if book.available_copies > 0:
-        book.available_copies -= 1
-        book.save()
+    if request.method == 'GET':
+        records = BorrowRecord.objects.all()
+        serializer = BorrowRecordSerializer(records, many=True)
+        return Response(serializer.data)
+    else:
+        book_id = request.data.get('book')
+        try:
+            book = Book.objects.get(pk=book_id)
+        except Book.DoesNotExist:
+            return Response({'detail': 'Book not found'})
+        
+        if book.available_copies > 0:
+            book.available_copies -= 1
+            book.save()
 
-        serializer = BorrowRecordSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors)
+            serializer = BorrowRecordSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors)
 
 @api_view(['PUT'])
 def returnBook(request, id):
@@ -104,12 +110,12 @@ def returnBook(request, id):
     if borrow_record.return_date:
         return Response({'message': 'Book already returned'})
     
-    borrow_record.book.available_copies += 1
-    borrow_record.book.save()
     serializer = BorrowRecordSerializer(borrow_record, data=request.data)
 
-    
     if serializer.is_valid():
+        borrow_record.book.available_copies += 1
+        borrow_record.book.save()
+        borrow_record.return_date = timezone.now().date()
         serializer.save()
         return Response(serializer.data)
     return Response(serializer.errors)
